@@ -20,6 +20,7 @@ state = 'https://api.sleeper.app/v1/state/nfl' # Only parameter is sport
 projections = ('https://api.sleeper.com/projections/nfl/player/6794?season_typ'
                'e=regular&season=2023&grouping=week')
 
+# Retrieve data from sleeper and convert from JSON to Python Dictionary
 users_data = requests.get(users + mahomies + '/users')
 users_json = users_data.text
 users_obj = json.loads(users_json)
