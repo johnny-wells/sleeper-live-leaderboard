@@ -1,26 +1,41 @@
+'''
+Some of the players in my fantasy football league participate in a side bet
+where the player with the most total points at the end of the season wins.
+It is difficult to keep track of the total points standings during the season
+for two reasons. Firstly, not everyone participates, and secondly, you cannot
+sort by total points in the Sleeper app. Players and their point totals are
+broken out by division and are ordered by win-loss record, both of which are
+irrelevant to the side bet.
+
+This script creates a leaderboard in a Google sheet that includes only the
+participating players and their point totals, orders them correctly, and shows
+how many points behind first place each player is.
+
+Data is sourced from Sleeper's API.
+'''
 import requests
 import json
 import pandas as pd
-import gspread # Google Sheets module
+import gspread  # Google Sheets module
 
-# Gspread vars (must write df to gsheet to make data live in Tableau Public)
+# Gspread variables
 gc = gspread.service_account()
 sh = gc.open('Mahomies Live Points Leaderboard')
 ws = sh.sheet1
 
-mahomies = 'xxxxxxxxxxxxxxxxxx' # League ID
+mahomies = 'xxxxxxxxxxxxxxxxxx'  # League ID
 
 # Endpoints
-league = 'https://api.sleeper.app/v1/league/' # <league_id>
-players = 'https://api.sleeper.app/v1/players/nfl' # Only parameter is sport
-rosters = 'https://api.sleeper.app/v1/league/' # <league_id>/rosters
-matchups = 'https://api.sleeper.app/v1/league/' # <league_id>/matchups/<week>
-users = 'https://api.sleeper.app/v1/league/' # <league_id>/users
-state = 'https://api.sleeper.app/v1/state/nfl' # Only parameter is sport
+league = 'https://api.sleeper.app/v1/league/'  # <league_id>
+players = 'https://api.sleeper.app/v1/players/nfl'  # Only parameter is sport
+rosters = 'https://api.sleeper.app/v1/league/'  # <league_id>/rosters
+matchups = 'https://api.sleeper.app/v1/league/'  # <league_id>/matchups/<week>
+users = 'https://api.sleeper.app/v1/league/'  # <league_id>/users
+state = 'https://api.sleeper.app/v1/state/nfl'  # Only parameter is sport
 projections = ('https://api.sleeper.com/projections/nfl/player/6794?season_typ'
                'e=regular&season=2023&grouping=week')
 
-# Retrieve data from sleeper and convert from JSON to Python Dictionary
+# Retrieve data from sleeper and convert from JSON to Python dictionary
 users_data = requests.get(users + mahomies + '/users')
 users_json = users_data.text
 users_obj = json.loads(users_json)
@@ -30,33 +45,24 @@ rosters_json = rosters_data.text
 rosters_obj = json.loads(rosters_json)
 
 # Create list of lists to later make into dataframe. Numbers are roster_IDs
-owners_list = [[5, 'Carlos'],
-               [1, 'Mike'],
-               [8, 'Johnny'],
-               [9,'Gavin'],
-               [7, 'Justice'],
-               [2, 'Aswad'],
-               [6,'Cody'],
-               [3,'Jake'],
-               [10,'Tim'],
-               [11,'Rudy'],
-               [4,'Matt'],
-               [12,'Greg']]
+owners_list = [[5, 'Carlos'], [1, 'Mike'], [8, 'Johnny'], [9, 'Gavin'],
+               [7, 'Justice'], [2, 'Aswad'], [6, 'Cody'], [3, 'Jake'],
+               [10, 'Tim'], [11, 'Rudy'], [4, 'Matt'], [12, 'Greg']]
 
 # Column names for dataframe
-owners_columns = ['id','Name']
+owners_columns = ['id', 'Name']
 
-owners_df = pd.DataFrame(owners_list,columns=owners_columns)
-owners_df.set_index('id',inplace=True)
+owners_df = pd.DataFrame(owners_list, columns=owners_columns)
+owners_df.set_index('id', inplace=True)
 
 # State endpoint gives us the currrent week
-    # Need to figure out when it changes
+# Need to figure out when it changes
 state_data = requests.get(state)
 state_json = state_data.text
 state_obj = json.loads(state_json)
 
 # Pull matchup data for all weeks including current
-completed_weeks = range(1,state_obj['week'] + 1)
+completed_weeks = range(1, state_obj['week'] + 1)
 weekly_data_dict = {}
 for i in completed_weeks:
     matchups_data = requests.get(matchups + mahomies + '/matchups/' + str(i))
@@ -73,28 +79,25 @@ for i in weekly_data_dict.values():
         point_totals.append(j['points'])
 
 # Combine lists into dataframe
-points = pd.DataFrame({'id' : roster_ids , 'Points' : point_totals})
+points = pd.DataFrame({'id': roster_ids, 'Points': point_totals})
 
 # SELECT id, sum(points) FROM points GROUP BY id
 points = points.groupby('id').sum()
 
 # Join owners and points dfs on id for final df with names and points
-final = pd.merge(owners_df,
-                 points,
-                 on='id',
-                 how='left')
+final = pd.merge(owners_df, points, on='id', how='left')
 
 # Drop Jake, Tim, and Greg because they're not in on the side bet, then sort
-final = final.drop([3,10,12]).sort_values(by='Points', ascending=False)
+final = final.drop([3, 10, 12]).sort_values(by='Points', ascending=False)
 
 # Reset index so I can subtract all point values from first row
 final = final.reset_index().drop('id', axis=1)
 
 # Subtract all points values from first row to get Points Behind
-final['Points Behind'] = final['Points'] - final.loc[0,'Points']
+final['Points Behind'] = final['Points'] - final.loc[0, 'Points']
 
 # Replace first place 0 with blank in Points Behind
-final.loc[0,'Points Behind'] = ''
+final.loc[0, 'Points Behind'] = ''
 
 # Write final df to Google Sheet
 ws.update([final.columns.values.tolist()] + final.values.tolist())
